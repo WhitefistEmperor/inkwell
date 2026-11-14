@@ -144,7 +144,7 @@ button { font: inherit; color: inherit; }
 @media (max-width: 760px) {
   .cover-hero { --fs: 27vw; }
   .cover-word { top: 15vh; }
-  .cover-line { top: calc(15vh + var(--fs) * 1.1); }
+  .cover-line { top: calc(15vh + var(--fs) * 1.45); }
   .on-cover .search { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
