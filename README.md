@@ -1,24 +1,32 @@
 # Inkwell
 
-A full-stack publishing platform inspired by the [RealWorld](https://github.com/gothinkster/realworld) spec: write articles in Markdown, tag them, comment, favorite, and follow other writers to build a personal feed.
-
 ![CI](https://github.com/WhitefistEmperor/inkwell/actions/workflows/ci.yml/badge.svg)
+
+A full-stack publishing platform: write articles in Markdown, tag them, comment, favorite, and follow other writers to build a personal feed.
+
+Inkwell implements the [RealWorld](https://github.com/realworld-apps/realworld) API spec and **passes the official RealWorld API test suite (13 files, 157 requests)**, which runs in CI on every push. On top of the spec it adds ranked full-text search, real-time notifications and comments over WebSockets, and a trending feed.
 
 **Stack:** React 19 + React Router (Vite) · Node.js + Express 5 · PostgreSQL · Socket.io · JWT authentication
 
 ## Features
 
+**RealWorld spec**
 - Sign up, sign in, and edit your profile (JWT auth, bcrypt-hashed passwords)
 - Create, edit and delete articles written in Markdown, with tags
-- Comment on articles; favorite articles; follow authors
-- Global list, personal "Following" feed, tag filter, author and favorites pages, all paginated
+- Comments, favorites, following authors
+- Global list, personal feed, and filters by tag, author and favorites, all paginated
+- Authorization: only the author can edit or delete their article or comment
+- Validation on every endpoint, with errors in the spec's `{ "errors": { "field": ["message"] } }` format
+
+**Beyond the spec**
 - **Ranked full-text search** using PostgreSQL `tsvector` with a GIN index: title matches outrank body matches, word stemming, and highlighted snippets
 - **Real-time over WebSockets (Socket.io):** notifications for follows, favorites and comments are pushed instantly, and comments appear live for everyone reading an article
 - **Trending** list ranked by a time-decay score: `(favorites + 2·comments + 1) / (age_hours + 2)^1.5`
-- Authorization: only the author can edit or delete their article or comment
-- Input validation on every endpoint with field-level error messages
-- 36 integration tests that run against a real PostgreSQL database, including WebSocket delivery and privacy tests
-- CI on GitHub Actions: API tests against a PostgreSQL service, plus a frontend build
+
+**Testing**
+- The official RealWorld suite: `npm run test:spec`
+- 31 integration tests of our own against a real PostgreSQL: security (hashing, tampered tokens, SQL injection, private WebSocket delivery), data integrity (cascades, transaction rollback, idempotency), search, trending and notifications
+- GitHub Actions runs both, plus a frontend build
 
 ## Run it locally
 
@@ -48,46 +56,56 @@ To use your own PostgreSQL instead (local install, Docker via `docker compose up
 npm test
 ```
 
-Starts a throwaway PostgreSQL, applies the migrations, and runs the API tests in `server/test/api.test.js`.
+```bash
+npm --prefix server run test:spec
+```
+
+The first runs our own tests. The second downloads the official RealWorld Hurl files and runs them against the API. Both start a throwaway PostgreSQL and apply the migrations first.
 
 ## Project structure
 
 ```
 inkwell/
 ├── server/
-│   ├── migrations/001_init.sql   database schema (7 tables)
+│   ├── migrations/               database schema, applied in order
 │   ├── src/
-│   │   ├── server.js             entry point: run migrations, start listening
+│   │   ├── server.js             entry point: migrations, HTTP + WebSocket server
 │   │   ├── app.js                Express app: middleware + routes
 │   │   ├── config.js             environment variables
 │   │   ├── db.js                 connection pool, query(), transaction()
 │   │   ├── migrate.js            applies .sql files once, in order
 │   │   ├── middleware.js         JWT auth, validation, error handling
-│   │   ├── articles.service.js   all SQL for articles, comments and tags
-│   │   └── routes/               auth.js, profiles.js, articles.js
-│   ├── scripts/                  with-db.js (dev/test database), seed.js
-│   └── test/api.test.js          integration tests
+│   │   ├── schemas.js            shared validation building blocks
+│   │   ├── articles.service.js   all SQL for articles, comments, tags, search, trending
+│   │   ├── notifications.service.js
+│   │   ├── realtime.js           Socket.io rooms and events
+│   │   └── routes/               users.js, profiles.js, articles.js, notifications.js
+│   ├── scripts/                  with-db.js (dev/test database), seed.js, spec.js (official suite)
+│   └── test/                     api.test.js, features.test.js, helpers.js
 └── client/
     └── src/
         ├── main.jsx, App.jsx     bootstrapping, routes, header
         ├── api.js                fetch wrapper (token + errors)
         ├── auth.jsx              AuthContext: who is signed in
+        ├── realtime.jsx          socket + live notifications state
         ├── components/           ArticleList, small shared pieces
-        └── pages/                Home, AuthPage, Editor, Article, Profile, Settings
+        └── pages/                Home, AuthPage, Editor, Article, Profile, Settings, Notifications
 ```
 
 ## API
 
-All routes are under `/api`. Send `Authorization: Bearer <token>` for routes marked 🔒.
+All routes are under `/api`. Send `Authorization: Token <jwt>` for routes marked 🔒. Request bodies are wrapped as the spec defines, for example `{ "user": { ... } }` or `{ "article": { ... } }`.
+
+**RealWorld spec**
 
 | Method | Route | What it does |
 |---|---|---|
-| POST | `/auth/register` | Create an account, returns `{ user, token }` |
-| POST | `/auth/login` | Sign in, returns `{ user, token }` |
-| GET / PUT | `/auth/me` 🔒 | Read / update the signed-in user |
+| POST | `/users` | Register, returns `{ user }` including a `token` |
+| POST | `/users/login` | Sign in |
+| GET / PUT | `/user` 🔒 | Read / update the signed-in user |
 | GET | `/profiles/:username` | Public profile |
 | POST / DELETE | `/profiles/:username/follow` 🔒 | Follow / unfollow |
-| GET | `/articles?tag=&author=&favorited=&limit=&offset=` | List articles, newest first |
+| GET | `/articles?tag=&author=&favorited=&limit=&offset=` | List articles, newest first, with `articlesCount` |
 | GET | `/articles/feed` 🔒 | Articles by people you follow |
 | POST | `/articles` 🔒 | Create an article |
 | GET | `/articles/:slug` | Read one article |
@@ -96,12 +114,15 @@ All routes are under `/api`. Send `Authorization: Bearer <token>` for routes mar
 | GET | `/articles/:slug/comments` | List comments |
 | POST | `/articles/:slug/comments` 🔒 | Add a comment |
 | DELETE | `/articles/:slug/comments/:id` 🔒 | Delete a comment (author only) |
-| GET | `/tags` | Most-used tags |
+| GET | `/tags` | Tags in use, most used first |
+
+**Inkwell additions**
+
+| Method | Route | What it does |
+|---|---|---|
 | GET | `/articles?q=` | Full-text search, ranked by relevance, with a `snippet` per result |
 | GET | `/articles/trending` | Top 5 by time-decayed engagement |
 | GET | `/notifications` 🔒 | Latest notifications and unread count |
 | POST | `/notifications/read` 🔒 | Mark all as read |
 
 **WebSocket events** (Socket.io, same port, JWT in the handshake): `notification` to the recipient's private room; `comment:new` and `comment:deleted` to everyone who sent `article:join` for that article.
-
-Errors always look like `{ "error": { "message": "...", "details": { "field": "reason" } } }`.

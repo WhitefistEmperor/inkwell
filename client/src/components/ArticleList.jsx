@@ -21,7 +21,7 @@ function Snippet({ text }) {
 
 export default function ArticleList({ filters, emptyText = 'No articles here yet.' }) {
   const [page, setPage] = useState(0);
-  const [state, setState] = useState({ status: 'loading', articles: [], total: 0 });
+  const [state, setState] = useState({ status: 'loading', articles: [], articlesCount: 0 });
 
   // A string version of the filters, so the effect below re-runs only when
   // the filters really change (objects are re-created on every render).
@@ -38,7 +38,7 @@ export default function ArticleList({ filters, emptyText = 'No articles here yet
     setState((s) => ({ ...s, status: 'loading' }));
     api(path)
       .then((data) => !cancelled && setState({ status: 'ready', ...data }))
-      .catch(() => !cancelled && setState({ status: 'error', articles: [], total: 0 }));
+      .catch(() => !cancelled && setState({ status: 'error', articles: [], articlesCount: 0 }));
     return () => {
       cancelled = true;
     };
@@ -52,7 +52,7 @@ export default function ArticleList({ filters, emptyText = 'No articles here yet
   if (state.status === 'loading' && !state.articles.length) return <p className="muted">Loading articles…</p>;
   if (!state.articles.length) return <p className="muted">{emptyText}</p>;
 
-  const pageCount = Math.ceil(state.total / PAGE_SIZE);
+  const pageCount = Math.ceil(state.articlesCount / PAGE_SIZE);
 
   return (
     <div className={state.status === 'loading' ? 'is-loading' : ''}>
@@ -69,7 +69,7 @@ export default function ArticleList({ filters, emptyText = 'No articles here yet
           </Link>
           <div className="preview-bottom">
             <Link to={`/article/${article.slug}`} className="read-more">Read more →</Link>
-            <TagList tags={article.tags} />
+            <TagList tags={article.tagList} />
           </div>
         </article>
       ))}

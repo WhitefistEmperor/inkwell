@@ -21,7 +21,7 @@ export default function Editor() {
     api(`/articles/${slug}`)
       .then(({ article }) => {
         if (article.author.username !== user.username) return navigate('/'); // not yours
-        setForm({ title: article.title, description: article.description, body: article.body, tags: article.tags.join(', ') });
+        setForm({ title: article.title, description: article.description, body: article.body, tags: article.tagList.join(', ') });
       })
       .catch(() => navigate('/'));
   }, [slug, user.username, navigate]);
@@ -37,7 +37,7 @@ export default function Editor() {
     try {
       const { article } = await api(slug ? `/articles/${slug}` : '/articles', {
         method: slug ? 'PUT' : 'POST',
-        body: { title: form.title, description: form.description, body: form.body, tags },
+        body: { article: { title: form.title, description: form.description, body: form.body, tagList: tags } },
       });
       navigate(`/article/${article.slug}`);
     } catch (err) {

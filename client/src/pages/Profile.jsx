@@ -19,7 +19,7 @@ export default function Profile() {
     api(`/profiles/${username}`)
       .then((data) => setProfile(data.profile))
       .catch(() => setMissing(true));
-  }, [username, user?.id]);
+  }, [username, user?.username]);
 
   if (missing) return <p className="muted center">No user called “{username}”.</p>;
   if (!profile) return <p className="muted center">Loading…</p>;

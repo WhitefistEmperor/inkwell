@@ -8,11 +8,14 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
+// The server reports problems as { errors: { field: ["message", ...] } }.
 export class ApiError extends Error {
-  constructor(status, message, details) {
-    super(message);
+  constructor(status, errors = {}) {
+    // e.g. "email has already been taken"
+    const lines = Object.entries(errors).flatMap(([field, messages]) => messages.map((m) => `${field} ${m}`));
+    super(lines[0] || 'Request failed');
     this.status = status;
-    this.details = details || {}; // field name -> message, from the server's validation
+    this.lines = lines;
   }
 }
 
@@ -20,15 +23,13 @@ export async function api(path, { method = 'GET', body } = {}) {
   const headers = {};
   if (body) headers['Content-Type'] = 'application/json';
   const token = tokenStore.get();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) headers.Authorization = `Token ${token}`; // the scheme the RealWorld spec uses
 
   const res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 204) return null; // success with no content (deletes)
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new ApiError(res.status, data.error?.message || 'Request failed', data.error?.details);
-  }
+  if (!res.ok) throw new ApiError(res.status, data.errors);
   return data;
 }
 

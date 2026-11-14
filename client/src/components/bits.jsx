@@ -97,13 +97,11 @@ export function FollowButton({ profile, onChange }) {
 // Shows the server's field-level validation messages under a form.
 export function FormErrors({ error }) {
   if (!error) return null;
-  const details = Object.entries(error.details || {});
+  // error.lines is e.g. ["email has already been taken", "password is too short ..."]
+  const lines = error.lines?.length ? error.lines : [error.message];
   return (
     <div className="form-error" role="alert">
-      <strong>{error.message}</strong>
-      {details.length > 0 && (
-        <ul>{details.map(([field, message]) => <li key={field}>{field}: {message}</li>)}</ul>
-      )}
+      <ul>{lines.map((line) => <li key={line}>{line}</li>)}</ul>
     </div>
   );
 }

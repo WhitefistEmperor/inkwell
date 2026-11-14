@@ -21,7 +21,7 @@ export function RealtimeProvider({ children }) {
   useEffect(() => {
     socket.disconnect();
     socket.connect();
-  }, [user?.id]);
+  }, [user?.username]);
 
   useEffect(() => {
     if (!user) return setState({ items: [], unread: 0 });
@@ -35,7 +35,7 @@ export function RealtimeProvider({ children }) {
     const onNotification = (n) => setState((s) => ({ items: [n, ...s.items], unread: s.unread + 1 }));
     socket.on('notification', onNotification);
     return () => socket.off('notification', onNotification);
-  }, [user?.id]);
+  }, [user?.username]);
 
   async function markAllRead() {
     setState((s) => ({ items: s.items.map((n) => ({ ...n, read: true })), unread: 0 }));

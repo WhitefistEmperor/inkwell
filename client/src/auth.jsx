@@ -13,24 +13,25 @@ export function AuthProvider({ children }) {
   // On page load: if a token was saved earlier, ask the server who it belongs to.
   useEffect(() => {
     if (!tokenStore.get()) return;
-    api('/auth/me')
+    api('/user')
       .then((data) => setUser(data.user))
       .catch(() => tokenStore.clear()) // expired or invalid token
       .finally(() => setLoading(false));
   }, []);
 
-  async function signIn(path, credentials) {
-    const data = await api(path, { method: 'POST', body: credentials });
-    tokenStore.set(data.token);
+  // Register, login and profile updates all answer with { user: { ..., token } }.
+  async function send(path, method, fields) {
+    const data = await api(path, { method, body: { user: fields } });
+    tokenStore.set(data.user.token);
     setUser(data.user);
   }
 
   const value = {
     user,
     loading,
-    setUser,
-    login: (credentials) => signIn('/auth/login', credentials),
-    register: (credentials) => signIn('/auth/register', credentials),
+    login: (credentials) => send('/users/login', 'POST', credentials),
+    register: (credentials) => send('/users', 'POST', credentials),
+    updateUser: (fields) => send('/user', 'PUT', fields),
     logout: () => {
       tokenStore.clear();
       setUser(null);

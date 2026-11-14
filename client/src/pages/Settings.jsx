@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { FormErrors } from '../components/bits.jsx';
 
 export default function Settings() {
-  const { user, setUser, logout } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ image: user.image, username: user.username, bio: user.bio, email: user.email, password: '' });
+  // The API uses null for "no bio / no picture"; form inputs need a string.
+  const [form, setForm] = useState({ image: user.image ?? '', username: user.username, bio: user.bio ?? '', email: user.email, password: '' });
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,8 +24,7 @@ export default function Settings() {
     // An empty password box means "keep my current password".
     const { password, ...rest } = form;
     try {
-      const data = await api('/auth/me', { method: 'PUT', body: password ? form : rest });
-      setUser(data.user);
+      await updateUser(password ? form : rest);
       setForm((f) => ({ ...f, password: '' }));
       setSaved(true);
     } catch (err) {

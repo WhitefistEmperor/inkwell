@@ -2,29 +2,12 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import request from 'supertest';
 import { io as connect } from 'socket.io-client';
-import { app } from '../src/app.js';
 import { pool } from '../src/db.js';
 import { runMigrations } from '../src/migrate.js';
 import { attachRealtime } from '../src/realtime.js';
-
-const api = request(app);
-const bearer = (token) => ({ Authorization: `Bearer ${token}` });
-
-async function register(username) {
-  const res = await api
-    .post('/api/auth/register')
-    .send({ username, email: `${username}@example.test`, password: 'correct-horse-9' });
-  assert.equal(res.status, 201);
-  return res.body.token;
-}
-
-async function publish(token, article) {
-  const res = await api.post('/api/articles').set(bearer(token)).send({ description: 'A short description', tags: [], ...article });
-  assert.equal(res.status, 201);
-  return res.body.article.slug;
-}
+import { api, auth, comment, publish, register } from './helpers.js';
+import { app } from '../src/app.js';
 
 let asha;
 let ravi;
@@ -81,38 +64,38 @@ describe('full-text search', () => {
   test('a title match ranks above a body match', async () => {
     const res = await api.get('/api/articles').query({ q: 'indexing' });
     assert.equal(res.status, 200);
-    assert.equal(res.body.total, 2);
+    assert.equal(res.body.articlesCount, 2);
     assert.equal(res.body.articles[0].title, 'Database indexing explained');
     assert.equal(res.body.articles[1].title, 'Cooking rice at home');
   });
 
   test('stemming: searching "indexes" finds "index" and "indexing"', async () => {
     const res = await api.get('/api/articles').query({ q: 'indexes' });
-    assert.equal(res.body.total, 2);
+    assert.equal(res.body.articlesCount, 2);
   });
 
   test('results carry a snippet with the matched word marked', async () => {
     const res = await api.get('/api/articles').query({ q: 'simmer' });
-    assert.equal(res.body.total, 1);
+    assert.equal(res.body.articlesCount, 1);
     assert.match(res.body.articles[0].snippet, /\[\[simmer\]\]/);
   });
 
   test('normal lists have no snippet, and a search with no match is empty', async () => {
     assert.equal((await api.get('/api/articles')).body.articles[0].snippet, undefined);
-    assert.equal((await api.get('/api/articles').query({ q: 'xylophone' })).body.total, 0);
+    assert.equal((await api.get('/api/articles').query({ q: 'xylophone' })).body.articlesCount, 0);
   });
 
   test('search combines with other filters', async () => {
     const res = await api.get('/api/articles').query({ q: 'databases', author: 'ravi' });
-    assert.equal(res.body.total, 1);
+    assert.equal(res.body.articlesCount, 1);
     assert.equal(res.body.articles[0].title, 'Travel notes');
   });
 
   test('editing an article updates the search index automatically', async () => {
     const slug = await publish(ravi, { title: 'Untitled draft', body: 'placeholder' });
-    await api.put(`/api/articles/${slug}`).set(bearer(ravi)).send({ body: 'Now it mentions kubernetes.' });
+    await api.put(`/api/articles/${slug}`).set(auth(ravi)).send({ article: { body: 'Now it mentions kubernetes.' } });
     const res = await api.get('/api/articles').query({ q: 'kubernetes' });
-    assert.equal(res.body.total, 1);
+    assert.equal(res.body.articlesCount, 1);
   });
 });
 
@@ -120,8 +103,8 @@ describe('trending', () => {
   test('engagement lifts an article, and age pulls it back down', async () => {
     const quiet = await publish(asha, { title: 'Quiet newest post', body: 'nobody reacted' });
     const loved = await publish(asha, { title: 'Loved post', body: 'people reacted' });
-    await api.post(`/api/articles/${loved}/favorite`).set(bearer(ravi));
-    await api.post(`/api/articles/${loved}/comments`).set(bearer(ravi)).send({ body: 'great' });
+    await api.post(`/api/articles/${loved}/favorite`).set(auth(ravi));
+    await comment(ravi, loved, 'great');
 
     let res = await api.get('/api/articles/trending');
     assert.equal(res.status, 200);
@@ -145,13 +128,13 @@ describe('notifications', () => {
   });
 
   test('follow, favorite and comment each notify the other user once', async () => {
-    await api.post('/api/profiles/asha/follow').set(bearer(ravi));
-    await api.post('/api/profiles/asha/follow').set(bearer(ravi)); // repeat: no second notification
-    await api.post(`/api/articles/${slug}/favorite`).set(bearer(ravi));
-    await api.post(`/api/articles/${slug}/favorite`).set(bearer(ravi)); // repeat
-    await api.post(`/api/articles/${slug}/comments`).set(bearer(ravi)).send({ body: 'hello' });
+    await api.post('/api/profiles/asha/follow').set(auth(ravi));
+    await api.post('/api/profiles/asha/follow').set(auth(ravi)); // repeat: no second notification
+    await api.post(`/api/articles/${slug}/favorite`).set(auth(ravi));
+    await api.post(`/api/articles/${slug}/favorite`).set(auth(ravi)); // repeat
+    await comment(ravi, slug, 'hello');
 
-    const res = await api.get('/api/notifications').set(bearer(asha));
+    const res = await api.get('/api/notifications').set(auth(asha));
     assert.equal(res.status, 200);
     assert.equal(res.body.unread, 3);
     assert.deepEqual(res.body.notifications.map((n) => n.type), ['comment', 'favorite', 'follow']); // newest first
@@ -161,19 +144,19 @@ describe('notifications', () => {
   });
 
   test('your own actions do not notify you', async () => {
-    await api.post(`/api/articles/${slug}/favorite`).set(bearer(asha));
-    await api.post(`/api/articles/${slug}/comments`).set(bearer(asha)).send({ body: 'my own comment' });
-    assert.equal((await api.get('/api/notifications').set(bearer(asha))).body.unread, 3);
+    await api.post(`/api/articles/${slug}/favorite`).set(auth(asha));
+    await comment(asha, slug, 'my own comment');
+    assert.equal((await api.get('/api/notifications').set(auth(asha))).body.unread, 3);
   });
 
   test('notifications are private and require signing in', async () => {
     assert.equal((await api.get('/api/notifications')).status, 401);
-    assert.equal((await api.get('/api/notifications').set(bearer(ravi))).body.notifications.length, 0);
+    assert.equal((await api.get('/api/notifications').set(auth(ravi))).body.notifications.length, 0);
   });
 
   test('mark all as read', async () => {
-    assert.equal((await api.post('/api/notifications/read').set(bearer(asha))).status, 204);
-    const res = await api.get('/api/notifications').set(bearer(asha));
+    assert.equal((await api.post('/api/notifications/read').set(auth(asha))).status, 204);
+    const res = await api.get('/api/notifications').set(auth(asha));
     assert.equal(res.body.unread, 0);
     assert.ok(res.body.notifications.every((n) => n.read));
   });
@@ -189,7 +172,7 @@ describe('realtime (WebSocket)', () => {
   test('a notification is pushed to the recipient the moment it happens', async () => {
     const ashaSocket = await openSocket(asha);
     const pushed = nextEvent(ashaSocket, 'notification');
-    await api.post(`/api/articles/${slug}/favorite`).set(bearer(ravi));
+    await api.post(`/api/articles/${slug}/favorite`).set(auth(ravi));
     const notification = await pushed;
     assert.equal(notification.type, 'favorite');
     assert.equal(notification.actor.username, 'ravi');
@@ -204,7 +187,7 @@ describe('realtime (WebSocket)', () => {
 
     const ashaSocket = await openSocket(asha);
     const pushed = nextEvent(ashaSocket, 'notification');
-    await api.post(`/api/articles/${slug}/comments`).set(bearer(ravi)).send({ body: 'for asha only' });
+    await comment(ravi, slug, 'for asha only');
     await pushed;
     await new Promise((resolve) => setTimeout(resolve, 150)); // give a leak time to show up
     assert.equal(leaked.length, 0);
@@ -216,11 +199,11 @@ describe('realtime (WebSocket)', () => {
     await new Promise((resolve) => setTimeout(resolve, 100)); // let the join reach the server
 
     const added = nextEvent(reader, 'comment:new');
-    const res = await api.post(`/api/articles/${slug}/comments`).set(bearer(ravi)).send({ body: 'live!' });
+    const res = await comment(ravi, slug, 'live!');
     assert.equal((await added).body, 'live!');
 
     const removed = nextEvent(reader, 'comment:deleted');
-    await api.delete(`/api/articles/${slug}/comments/${res.body.comment.id}`).set(bearer(ravi));
+    await api.delete(`/api/articles/${slug}/comments/${res.body.comment.id}`).set(auth(ravi));
     assert.equal((await removed).id, res.body.comment.id);
   });
 
@@ -228,7 +211,7 @@ describe('realtime (WebSocket)', () => {
     const outsider = await openSocket(ravi);
     let heard = false;
     outsider.on('comment:new', () => (heard = true));
-    await api.post(`/api/articles/${slug}/comments`).set(bearer(asha)).send({ body: 'quiet' });
+    await comment(asha, slug, 'quiet');
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(heard, false);
   });

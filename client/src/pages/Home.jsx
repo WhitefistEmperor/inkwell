@@ -16,7 +16,7 @@ export default function Home() {
   const [tags, setTags] = useState([]);
   const [trending, setTrending] = useState([]);
   useEffect(() => {
-    api('/tags').then((data) => setTags(data.tags)).catch(() => {});
+    api('/tags').then((data) => setTags(data.tags.slice(0, 20))).catch(() => {});
     api('/articles/trending').then((data) => setTrending(data.articles)).catch(() => {});
   }, []);
 

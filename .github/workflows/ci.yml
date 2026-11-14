@@ -27,6 +27,9 @@ jobs:
       - name: API tests
         run: npm ci && npm test
         working-directory: server
+      - name: Official RealWorld API suite
+        run: npm run test:spec
+        working-directory: server
       - name: Frontend build
         run: npm ci && npm run build
         working-directory: client

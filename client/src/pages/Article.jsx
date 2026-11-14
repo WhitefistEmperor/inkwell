@@ -28,7 +28,7 @@ export default function Article() {
         setComments(c.comments);
       })
       .catch(() => setMissing(true));
-  }, [slug, user?.id]);
+  }, [slug, user?.username]);
 
   // Live comments: join this article's room and apply events as they arrive.
   useEffect(() => {
@@ -94,7 +94,7 @@ export default function Article() {
         {/* react-markdown renders Markdown to React elements and ignores raw
             HTML, so a body containing <script> cannot run (XSS protection). */}
         <div className="prose"><Markdown>{article.body}</Markdown></div>
-        <TagList tags={article.tags} />
+        <TagList tags={article.tagList} />
 
         <section className="comments">
           <h2>Comments ({comments.length})</h2>
@@ -132,7 +132,7 @@ function CommentForm({ slug, onAdded }) {
     setBusy(true);
     setError(null);
     try {
-      const { comment } = await api(`/articles/${slug}/comments`, { method: 'POST', body: { body } });
+      const { comment } = await api(`/articles/${slug}/comments`, { method: 'POST', body: { comment: { body } } });
       onAdded(comment);
       setBody('');
     } catch (err) {
