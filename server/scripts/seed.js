@@ -42,7 +42,7 @@ const posts = [
 ];
 
 for (const [author, title, description, tags, body] of posts) {
-  await createArticle(author, { title, description, body, tags });
+  await createArticle(author, { title, description, body, tagList: tags });
 }
 
 await pool.query('INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2)', [kabir, meera]);
