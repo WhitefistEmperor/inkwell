@@ -1,4 +1,5 @@
-import { Link, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import Cover from './components/Cover.jsx';
 import { useAuth } from './auth.jsx';
 import { useNotifications } from './realtime.jsx';
 import { Drop, PageNote } from './components/bits.jsx';
@@ -18,7 +19,7 @@ function Private({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
-function Header() {
+function Header({ onCover }) {
   const { user } = useAuth();
   const { unread } = useNotifications();
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ function Header() {
   }
 
   return (
-    <header className="site-header">
+    <header className={`site-header ${onCover ? 'on-cover' : ''}`}>
       <div className="header-row">
         <Link to="/" className="brand"><Drop />Inkwell</Link>
         <form className="search" role="search" onSubmit={search}>
@@ -59,9 +60,16 @@ function Header() {
 }
 
 export default function App() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  // Signed-out visitors arriving at the plain home address get the bookshelf
+  // cover. A search or tag link (/?q=..., /?tag=...) goes straight to the list.
+  const showCover = !user && !loading && location.pathname === '/' && !location.search;
+
   return (
     <>
-      <Header />
+      <Header onCover={showCover} />
+      {showCover && <Cover />}
       <main className="sheet">
         <Routes>
           <Route path="/" element={<Home />} />

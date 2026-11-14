@@ -33,17 +33,6 @@ export default function Home() {
 
   return (
     <>
-      {!user && (
-        <section className="row cover ruled">
-          <div className="note" />
-          <div>
-            <h1>A notebook for what you are learning.</h1>
-            <p>Write it down in Markdown. Follow people who write things down too.</p>
-            <Link to="/register" className="button">Start writing</Link>
-          </div>
-        </section>
-      )}
-
       <div className="with-aside">
         <section>
           <div className="row ruled">
