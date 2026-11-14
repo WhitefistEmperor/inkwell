@@ -14,16 +14,22 @@ export function signToken(userId) {
   return jwt.sign({ sub: String(userId) }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 }
 
-// Reads "Authorization: Bearer <token>". Returns the user id, or null.
-function userIdFromRequest(req) {
-  const header = req.get('authorization') || '';
-  const [scheme, token] = header.split(' ');
-  if (scheme !== 'Bearer' || !token) return null;
+// Returns the user id inside a valid token, or null. Used by both the HTTP
+// middleware below and the WebSocket handshake in realtime.js.
+export function verifyToken(token) {
+  if (!token) return null;
   try {
     return Number(jwt.verify(token, config.jwtSecret).sub);
   } catch {
     return null; // expired, tampered or malformed
   }
+}
+
+// Reads "Authorization: Bearer <token>". Returns the user id, or null.
+function userIdFromRequest(req) {
+  const header = req.get('authorization') || '';
+  const [scheme, token] = header.split(' ');
+  return scheme === 'Bearer' ? verifyToken(token) : null;
 }
 
 // Authentication: who are you? Protected routes use requireAuth.

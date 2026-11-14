@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { HttpError, optionalAuth, requireAuth } from '../middleware.js';
+import { notify } from '../notifications.service.js';
 
 const router = Router();
 
@@ -27,7 +28,9 @@ router.post('/:username/follow', requireAuth, async (req, res) => {
   const target = await loadProfile(req.params.username, req.userId);
   if (target.id === req.userId) throw new HttpError(422, 'You cannot follow yourself');
   // ON CONFLICT DO NOTHING makes the endpoint idempotent: following twice is harmless.
-  await query('INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [req.userId, target.id]);
+  const result = await query('INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [req.userId, target.id]);
+  // rowCount is 1 only for a brand-new follow, so repeating the request does not notify again.
+  if (result.rowCount === 1) await notify({ userId: target.id, actorId: req.userId, type: 'follow' });
   res.json({ profile: publicProfile({ ...target, following: true }) });
 });
 

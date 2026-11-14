@@ -2,6 +2,8 @@
 import crypto from 'node:crypto';
 import { query, transaction } from './db.js';
 import { HttpError } from './middleware.js';
+import { notify } from './notifications.service.js';
+import { emitToArticle } from './realtime.js';
 
 // One query returns an article with everything the UI needs: author, tags,
 // favorite count, and two viewer-specific flags. $1 is the viewer's id (or
@@ -33,6 +35,7 @@ function toArticle(row) {
     favorited: row.favorited,
     favoritesCount: row.favorites_count,
     author: { username: row.username, bio: row.bio, image: row.image, following: row.following },
+    ...(row.snippet ? { snippet: row.snippet } : {}), // only present on search results
   };
 }
 
@@ -45,8 +48,13 @@ function makeSlug(title) {
 
 // Builds the WHERE clause for the list endpoints. Each filter pushes its value
 // onto `params` and refers to it by position, so values are never put in the SQL text.
-function buildFilters(params, { tag, author, favoritedBy, feedFor }) {
+function buildFilters(params, { tag, author, favoritedBy, feedFor, q }) {
   const where = [];
+  if (q) {
+    // websearch_to_tsquery understands Google-style input: quotes, OR, -word.
+    params.push(q);
+    where.push(`a.search @@ websearch_to_tsquery('english', $${params.length})`);
+  }
   if (tag) {
     params.push(tag);
     where.push(`EXISTS (SELECT 1 FROM article_tags at JOIN tags t ON t.id = at.tag_id
@@ -71,10 +79,27 @@ function buildFilters(params, { tag, author, favoritedBy, feedFor }) {
 export async function listArticles({ viewerId = null, limit, offset, ...filters }) {
   const params = [viewerId];
   const where = buildFilters(params, filters);
+
+  // Searching changes two things: results are ordered by relevance instead of
+  // date, and each result carries a snippet with the matched words marked.
+  // The marks are [[ and ]] rather than HTML tags, so the frontend can
+  // highlight them without ever rendering user-written HTML.
+  let select = ARTICLE_SELECT;
+  let orderBy = 'a.created_at DESC, a.id DESC';
+  if (filters.q) {
+    const tsQuery = `websearch_to_tsquery('english', $${params.indexOf(filters.q) + 1})`;
+    select = ARTICLE_SELECT.replace(
+      'FROM articles a',
+      `, ts_headline('english', a.body, ${tsQuery}, 'StartSel=[[, StopSel=]], MaxWords=30, MinWords=12') AS snippet
+       FROM articles a`,
+    );
+    orderBy = `ts_rank(a.search, ${tsQuery}) DESC, a.id DESC`;
+  }
+
   params.push(limit, offset);
   const page = await query(
-    `${ARTICLE_SELECT} ${where}
-     ORDER BY a.created_at DESC, a.id DESC
+    `${select} ${where}
+     ORDER BY ${orderBy}
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
@@ -88,6 +113,24 @@ export async function listArticles({ viewerId = null, limit, offset, ...filters 
   );
 
   return { articles: page.rows.map(toArticle), total: total.rows[0].total };
+}
+
+// "Trending" = engagement that fades with age, the formula Hacker News made
+// famous:  score = (favorites + 2*comments + 1) / (age_in_hours + 2)^1.5
+// A comment counts double because it takes more effort than a click. The
+// exponent is "gravity": it decides how fast old articles sink.
+export async function trendingArticles(viewerId = null, limit = 5) {
+  const { rows } = await query(
+    `${ARTICLE_SELECT}
+     WHERE a.created_at > now() - interval '30 days'
+     ORDER BY ((SELECT count(*) FROM favorites f WHERE f.article_id = a.id)
+               + 2 * (SELECT count(*) FROM comments c WHERE c.article_id = a.id) + 1)
+              / power(extract(epoch FROM now() - a.created_at) / 3600 + 2, 1.5) DESC,
+              a.id DESC
+     LIMIT $2`,
+    [viewerId, limit],
+  );
+  return rows.map(toArticle);
 }
 
 async function findRow(slug, viewerId = null) {
@@ -157,7 +200,8 @@ export async function deleteArticle(userId, slug) {
 export async function setFavorite(userId, slug, favorited) {
   const row = await findRow(slug, userId);
   if (favorited) {
-    await query('INSERT INTO favorites (user_id, article_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, row.id]);
+    const result = await query('INSERT INTO favorites (user_id, article_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, row.id]);
+    if (result.rowCount === 1) await notify({ userId: row.author_id, actorId: userId, type: 'favorite', articleId: row.id });
   } else {
     await query('DELETE FROM favorites WHERE user_id = $1 AND article_id = $2', [userId, row.id]);
   }
@@ -194,7 +238,10 @@ export async function addComment(userId, slug, body) {
      FROM inserted i JOIN users u ON u.id = i.author_id`,
     [body, article.id, userId],
   );
-  return toComment(rows[0]);
+  const comment = toComment(rows[0]);
+  emitToArticle(slug, 'comment:new', comment); // everyone with this article open sees it appear
+  await notify({ userId: article.author_id, actorId: userId, type: 'comment', articleId: article.id });
+  return comment;
 }
 
 export async function deleteComment(userId, slug, commentId) {
@@ -203,6 +250,7 @@ export async function deleteComment(userId, slug, commentId) {
   if (!rows[0]) throw new HttpError(404, 'Comment not found');
   if (rows[0].author_id !== userId) throw new HttpError(403, 'You can only delete your own comments');
   await query('DELETE FROM comments WHERE id = $1', [commentId]);
+  emitToArticle(slug, 'comment:deleted', { id: commentId });
 }
 
 // ---- tags ----

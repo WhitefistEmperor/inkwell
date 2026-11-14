@@ -9,6 +9,7 @@ import { popularTags } from './articles.service.js';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import articleRoutes from './routes/articles.js';
+import notificationRoutes from './routes/notifications.js';
 
 export const app = express();
 
@@ -20,6 +21,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/articles', articleRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.get('/api/tags', async (req, res) => res.json({ tags: await popularTags() }));
 
 // Order matters: these two must come after every route.

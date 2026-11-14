@@ -30,14 +30,19 @@ const listSchema = pageSchema.extend({
   tag: z.string().trim().toLowerCase().optional(),
   author: z.string().trim().optional(),
   favorited: z.string().trim().optional(),
+  q: z.string().trim().max(100).optional(), // full-text search
 });
 
 const commentSchema = z.object({ body: z.string().trim().min(1, 'Required').max(2000) });
 
-// Global list, with optional filters: ?tag= ?author= ?favorited= ?limit= ?offset=
+// Global list, with optional filters: ?q= ?tag= ?author= ?favorited= ?limit= ?offset=
 router.get('/', optionalAuth, validate(listSchema, 'query'), async (req, res) => {
   const { favorited, ...rest } = req.valid.query;
   res.json(await articles.listArticles({ viewerId: req.userId, favoritedBy: favorited, ...rest }));
+});
+
+router.get('/trending', optionalAuth, async (req, res) => {
+  res.json({ articles: await articles.trendingArticles(req.userId) });
 });
 
 // Personal feed: articles by people the signed-in user follows.
