@@ -2,7 +2,9 @@
 
 A full-stack publishing platform inspired by the [RealWorld](https://github.com/gothinkster/realworld) spec: write articles in Markdown, tag them, comment, favorite, and follow other writers to build a personal feed.
 
-**Stack:** React 19 + React Router (Vite) · Node.js + Express 5 · PostgreSQL · JWT authentication
+![CI](https://github.com/WhitefistEmperor/inkwell/actions/workflows/ci.yml/badge.svg)
+
+**Stack:** React 19 + React Router (Vite) · Node.js + Express 5 · PostgreSQL · Socket.io · JWT authentication
 
 ## Features
 
@@ -10,9 +12,13 @@ A full-stack publishing platform inspired by the [RealWorld](https://github.com/
 - Create, edit and delete articles written in Markdown, with tags
 - Comment on articles; favorite articles; follow authors
 - Global list, personal "Following" feed, tag filter, author and favorites pages, all paginated
+- **Ranked full-text search** using PostgreSQL `tsvector` with a GIN index: title matches outrank body matches, word stemming, and highlighted snippets
+- **Real-time over WebSockets (Socket.io):** notifications for follows, favorites and comments are pushed instantly, and comments appear live for everyone reading an article
+- **Trending** list ranked by a time-decay score: `(favorites + 2·comments + 1) / (age_hours + 2)^1.5`
 - Authorization: only the author can edit or delete their article or comment
 - Input validation on every endpoint with field-level error messages
-- 21 integration tests that run against a real PostgreSQL database
+- 36 integration tests that run against a real PostgreSQL database, including WebSocket delivery and privacy tests
+- CI on GitHub Actions: API tests against a PostgreSQL service, plus a frontend build
 
 ## Run it locally
 
@@ -91,5 +97,11 @@ All routes are under `/api`. Send `Authorization: Bearer <token>` for routes mar
 | POST | `/articles/:slug/comments` 🔒 | Add a comment |
 | DELETE | `/articles/:slug/comments/:id` 🔒 | Delete a comment (author only) |
 | GET | `/tags` | Most-used tags |
+| GET | `/articles?q=` | Full-text search, ranked by relevance, with a `snippet` per result |
+| GET | `/articles/trending` | Top 5 by time-decayed engagement |
+| GET | `/notifications` 🔒 | Latest notifications and unread count |
+| POST | `/notifications/read` 🔒 | Mark all as read |
+
+**WebSocket events** (Socket.io, same port, JWT in the handshake): `notification` to the recipient's private room; `comment:new` and `comment:deleted` to everyone who sent `article:join` for that article.
 
 Errors always look like `{ "error": { "message": "...", "details": { "field": "reason" } } }`.

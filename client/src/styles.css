@@ -146,3 +146,23 @@ main { min-height: 70vh; padding-bottom: 4rem; }
 .form-error { border: 1px solid var(--accent); border-radius: 6px; padding: 10px 14px; color: var(--accent); font-size: 0.92rem; }
 .form-error ul { margin: 4px 0 0; padding-left: 1.2rem; }
 .form-success { margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+
+/* ---- search, trending, notifications ---- */
+.search { flex: 1 1 160px; max-width: 320px; }
+.search input { width: 100%; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-size: 0.9rem; }
+.snippet { margin-top: 0.5rem !important; font-size: 0.92rem; }
+mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--ink); border-radius: 3px; padding: 0 2px; }
+
+.trending { list-style: none; counter-reset: rank; padding: 0; margin: 0 0 2rem; }
+.trending li { counter-increment: rank; display: grid; grid-template-columns: 2rem 1fr; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.trending li::before { content: counter(rank); grid-row: span 2; font-family: var(--serif); font-size: 1.5rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.trending a { font-family: var(--serif); font-weight: 700; text-decoration: none; line-height: 1.25; }
+.trending a:hover { color: var(--accent); }
+.trending span { font-size: 0.8rem; }
+
+.badge { display: inline-block; min-width: 18px; margin-left: 5px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.72rem; font-weight: 700; text-align: center; line-height: 18px; }
+.notifications { list-style: none; padding: 0; margin: 1.5rem 0 0; }
+.notifications li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.notifications li.unread { background: color-mix(in srgb, var(--accent) 10%, transparent); border-left: 3px solid var(--accent); }
+.notifications p { margin: 0; flex: 1; min-width: 0; }
+.notifications time { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }

@@ -8,6 +8,17 @@ import { Byline, FavoriteButton, TagList } from './bits.jsx';
 
 const PAGE_SIZE = 5;
 
+// The server marks matched words as [[word]]. Splitting on the markers gives
+// alternating plain / matched pieces, which are rendered as text and <mark>.
+// No HTML from the article body is ever injected, so this cannot cause XSS.
+function Snippet({ text }) {
+  return (
+    <p className="snippet">
+      … {text.split(/\[\[|\]\]/).map((piece, i) => (i % 2 ? <mark key={i}>{piece}</mark> : piece))} …
+    </p>
+  );
+}
+
 export default function ArticleList({ filters, emptyText = 'No articles here yet.' }) {
   const [page, setPage] = useState(0);
   const [state, setState] = useState({ status: 'loading', articles: [], total: 0 });
@@ -54,6 +65,7 @@ export default function ArticleList({ filters, emptyText = 'No articles here yet
           <Link to={`/article/${article.slug}`} className="preview-link">
             <h2>{article.title}</h2>
             <p>{article.description}</p>
+            {article.snippet && <Snippet text={article.snippet} />}
           </Link>
           <div className="preview-bottom">
             <Link to={`/article/${article.slug}`} className="read-more">Read more →</Link>

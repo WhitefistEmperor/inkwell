@@ -3,7 +3,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import { socket } from '../realtime.jsx';
 import { Avatar, Byline, FavoriteButton, FollowButton, FormErrors, TagList, formatDate } from '../components/bits.jsx';
+
+// The person who posts a comment receives it twice: in the HTTP response and
+// as a WebSocket event. Whichever arrives second is ignored.
+const addOnce = (list, comment) => (list.some((c) => c.id === comment.id) ? list : [comment, ...list]);
 
 export default function Article() {
   const { slug } = useParams();
@@ -24,6 +29,24 @@ export default function Article() {
       })
       .catch(() => setMissing(true));
   }, [slug, user?.id]);
+
+  // Live comments: join this article's room and apply events as they arrive.
+  useEffect(() => {
+    const join = () => socket.emit('article:join', slug);
+    const onNew = (comment) => setComments((list) => addOnce(list, comment));
+    const onDeleted = ({ id }) => setComments((list) => list.filter((c) => c.id !== id));
+
+    join();
+    socket.on('connect', join); // rooms are forgotten on reconnect, so join again
+    socket.on('comment:new', onNew);
+    socket.on('comment:deleted', onDeleted);
+    return () => {
+      socket.emit('article:leave', slug);
+      socket.off('connect', join);
+      socket.off('comment:new', onNew);
+      socket.off('comment:deleted', onDeleted);
+    };
+  }, [slug]);
 
   if (missing) return <p className="muted center">This article does not exist.</p>;
   if (!article) return <p className="muted center">Loading…</p>;
@@ -76,7 +99,7 @@ export default function Article() {
         <section className="comments">
           <h2>Comments ({comments.length})</h2>
           {user ? (
-            <CommentForm slug={slug} onAdded={(comment) => setComments((list) => [comment, ...list])} />
+            <CommentForm slug={slug} onAdded={(comment) => setComments((list) => addOnce(list, comment))} />
           ) : (
             <p className="muted"><Link to="/login">Sign in</Link> to join the conversation.</p>
           )}
