@@ -132,3 +132,16 @@ All routes are under `/api`. Send `Authorization: Token <jwt>` for routes marked
 The interface is drawn as a ruled notebook page. A red margin line runs down the left; dates, authors and form labels hang in the margin, and the writing sits to the right of it. Rows are separated by pale blue rules instead of cards. Ink is the only colour: anything new (a comment that just arrived over the WebSocket, an unread notification, something you favorited) is shown in wet blue ink, and a live comment dries to blue-black over a few seconds. Type is Alegreya, a face with a pen-drawn build, with Alegreya Sans for the interface.
 
 **The landing page.** Signed-out visitors arrive on a black cover with the wordmark and a diagonal shelf of 3D hardcover books (Three.js). The books are the 32 latest articles: each cover is drawn on a canvas from the article's title and author, with a colour and motif picked by hashing its slug. Books near the pointer rise in a wave driven by one damped spring per book, and clicking a book opens the article. Three.js is code-split, so it is only downloaded on this page. The same articles are listed as ordinary links below the cover, which is what screen readers and search engines get.
+
+## Deploying to Vercel
+
+The repository is ready to import as it is: `vercel.json` builds the React app as static files and runs the Express API as one serverless function (`api/index.js`).
+
+1. On vercel.com choose **Add New, Project** and import this repository. Leave the build settings alone.
+2. Under **Storage**, create a **Neon** PostgreSQL database and connect it to the project. That adds `DATABASE_URL`.
+3. Under **Settings, Environment Variables**, add `JWT_SECRET` with a long random value.
+4. Deploy. The first request applies the database migrations.
+
+To add the demo articles to the hosted database, run the seed once from your machine with the hosted connection string in `DATABASE_URL`.
+
+**What is different on Vercel.** A serverless function is frozen between requests, so it cannot hold a WebSocket open. The Vercel build therefore sets `VITE_REALTIME=off`: notifications are fetched every 30 seconds instead of pushed, and new comments appear on reload. Everything else, including search, trending and the official RealWorld suite's behaviour, is identical. For live updates, run `server/` on a host with long-lived processes (Render, Railway, Fly) and point the frontend at it.

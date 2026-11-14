@@ -3,7 +3,7 @@ import { config } from './config.js';
 
 // A pool keeps a few connections open and reuses them, instead of opening a
 // new TCP connection to PostgreSQL for every request.
-export const pool = new pg.Pool({ connectionString: config.databaseUrl });
+export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: config.dbPoolSize });
 
 // Every query in the app uses $1, $2... placeholders, so user input is never
 // concatenated into SQL. That is what prevents SQL injection.

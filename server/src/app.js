@@ -17,6 +17,10 @@ import notificationRoutes from './routes/notifications.js';
 
 export const app = express();
 
+// Behind a hosting proxy the visitor's address arrives in a header. Trusting
+// the first proxy lets the rate limiter count real visitors, not the proxy.
+if (config.isServerless || process.env.TRUST_PROXY) app.set('trust proxy', 1);
+
 app.use(helmet());                                // security headers
 app.use(cors({ origin: config.clientOrigin }));   // only our frontend may call the API from a browser
 app.use(express.json({ limit: '200kb' }));        // parse JSON bodies, reject huge ones
