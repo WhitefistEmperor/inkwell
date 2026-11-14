@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import ArticleList from '../components/ArticleList.jsx';
-import { Avatar, FollowButton } from '../components/bits.jsx';
+import { Avatar, FollowButton, PageNote } from '../components/bits.jsx';
 
 export default function Profile() {
   const { username } = useParams();
@@ -21,23 +21,26 @@ export default function Profile() {
       .catch(() => setMissing(true));
   }, [username, user?.username]);
 
-  if (missing) return <p className="muted center">No user called “{username}”.</p>;
-  if (!profile) return <p className="muted center">Loading…</p>;
+  if (missing) return <PageNote>Nobody here is called “{username}”.</PageNote>;
+  if (!profile) return <PageNote>Loading…</PageNote>;
 
   const isMe = user?.username === profile.username;
 
   return (
     <>
-      <section className="profile-head">
-        <div className="wrap medium">
-          <Avatar user={profile} size={88} />
+      <header className="row person">
+        <div className="note"><Avatar user={profile} size={72} /></div>
+        <div>
           <h1>{profile.username}</h1>
-          {profile.bio && <p>{profile.bio}</p>}
-          {isMe ? <Link to="/settings" className="pill">Edit profile</Link> : <FollowButton profile={profile} onChange={setProfile} />}
+          {profile.bio && <p className="bio">{profile.bio}</p>}
+          <div className="actions">
+            {isMe ? <Link to="/settings">Edit profile</Link> : <FollowButton profile={profile} onChange={setProfile} />}
+          </div>
         </div>
-      </section>
+      </header>
 
-      <div className="wrap medium">
+      <div className="row ruled">
+        <div className="note" />
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === 'written'} className={tab === 'written' ? 'active' : ''} onClick={() => setTab('written')}>
             Articles
@@ -46,11 +49,11 @@ export default function Profile() {
             Favorites
           </button>
         </div>
-        <ArticleList
-          filters={tab === 'written' ? { author: profile.username } : { favorited: profile.username }}
-          emptyText={tab === 'written' ? 'Nothing published yet.' : 'No favorites yet.'}
-        />
       </div>
+      <ArticleList
+        filters={tab === 'written' ? { author: profile.username } : { favorited: profile.username }}
+        emptyText={tab === 'written' ? `${profile.username} has not published anything yet.` : `${profile.username} has not favorited anything yet.`}
+      />
     </>
   );
 }

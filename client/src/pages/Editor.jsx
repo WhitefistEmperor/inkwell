@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { FormErrors } from '../components/bits.jsx';
+import { Field, FormErrors } from '../components/bits.jsx';
 
 const EMPTY = { title: '', description: '', body: '', tags: '' };
 
@@ -47,28 +47,30 @@ export default function Editor() {
   }
 
   return (
-    <div className="wrap medium">
-      <h1 className="page-title">{slug ? 'Edit article' : 'New article'}</h1>
-      <form className="form" onSubmit={submit}>
-        <FormErrors error={error} />
-        <label>
-          Title
-          <input name="title" value={form.title} onChange={update} required />
-        </label>
-        <label>
-          What is it about?
-          <input name="description" value={form.description} onChange={update} required />
-        </label>
-        <label>
-          Article (Markdown supported)
-          <textarea name="body" rows={14} value={form.body} onChange={update} required />
-        </label>
-        <label>
-          Tags (comma separated)
-          <input name="tags" value={form.tags} onChange={update} placeholder="react, postgres" />
-        </label>
-        <button className="button" disabled={busy}>{slug ? 'Save changes' : 'Publish'}</button>
-      </form>
-    </div>
+    <form onSubmit={submit}>
+      <div className="row page-title">
+        <div className="note" />
+        <h1>{slug ? 'Edit article' : 'New article'}</h1>
+      </div>
+
+      <FormErrors error={error} />
+      <Field label="Title" id="title" wide>
+        <input id="title" name="title" className="title-input" value={form.title} onChange={update} required />
+      </Field>
+      <Field label="Summary" id="description" wide hint="One or two sentences. Shown under the title in lists.">
+        <input id="description" name="description" value={form.description} onChange={update} required />
+      </Field>
+      <Field label="Article" id="body" wide hint="Markdown works: **bold**, # headings, `code`, lists and links.">
+        <textarea id="body" name="body" className="ruled-paper" rows={14} value={form.body} onChange={update} required />
+      </Field>
+      <Field label="Tags" id="tags" wide hint="Separate with commas, for example: react, postgres">
+        <input id="tags" name="tags" value={form.tags} onChange={update} />
+      </Field>
+
+      <div className="row form-end">
+        <div className="note" />
+        <div><button className="button" disabled={busy}>{slug ? 'Save changes' : 'Publish'}</button></div>
+      </div>
+    </form>
   );
 }

@@ -126,3 +126,7 @@ All routes are under `/api`. Send `Authorization: Token <jwt>` for routes marked
 | POST | `/notifications/read` 🔒 | Mark all as read |
 
 **WebSocket events** (Socket.io, same port, JWT in the handshake): `notification` to the recipient's private room; `comment:new` and `comment:deleted` to everyone who sent `article:join` for that article.
+
+## Design
+
+The interface is drawn as a ruled notebook page. A red margin line runs down the left; dates, authors and form labels hang in the margin, and the writing sits to the right of it. Rows are separated by pale blue rules instead of cards. Ink is the only colour: anything new (a comment that just arrived over the WebSocket, an unread notification, something you favorited) is shown in wet blue ink, and a live comment dries to blue-black over a few seconds. Type is Alegreya, a face with a pen-drawn build, with Alegreya Sans for the interface.

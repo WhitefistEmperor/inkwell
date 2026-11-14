@@ -6,12 +6,12 @@ import ArticleList from '../components/ArticleList.jsx';
 
 export default function Home() {
   const { user } = useAuth();
-  // The selected tab lives in the URL (?tag=sql or ?view=feed), so it
-  // survives a refresh and can be shared as a link.
+  // The selected view lives in the URL (?tag=sql, ?q=index or ?view=feed), so
+  // it survives a refresh and can be shared as a link.
   const [params, setParams] = useSearchParams();
   const tag = params.get('tag');
   const q = params.get('q');
-  const view = q ? 'search' : tag ? 'tag' : params.get('view') === 'feed' && user ? 'feed' : 'global';
+  const view = q ? 'search' : tag ? 'tag' : params.get('view') === 'feed' && user ? 'feed' : 'latest';
 
   const [tags, setTags] = useState([]);
   const [trending, setTrending] = useState([]);
@@ -21,66 +21,68 @@ export default function Home() {
   }, []);
 
   const filters = view === 'search' ? { q } : view === 'tag' ? { tag } : view === 'feed' ? { feed: true } : {};
+  const emptyText =
+    view === 'feed' ? 'Nobody you follow has written yet. Follow a writer from their profile and their articles appear here.'
+    : view === 'search' ? `Nothing matches “${q}”. Try a different word.`
+    : view === 'tag' ? `Nothing is tagged #${tag} yet.`
+    : 'Nothing has been written here yet.';
+
+  const tab = (name, label, onClick) => (
+    <button role="tab" aria-selected={view === name} className={view === name ? 'active' : ''} onClick={onClick}>{label}</button>
+  );
 
   return (
     <>
       {!user && (
-        <section className="hero">
-          <div className="wrap">
-            <h1>Ideas worth writing down.</h1>
-            <p>Inkwell is a place to publish what you are learning and follow people who do the same.</p>
+        <section className="row cover ruled">
+          <div className="note" />
+          <div>
+            <h1>A notebook for what you are learning.</h1>
+            <p>Write it down in Markdown. Follow people who write things down too.</p>
             <Link to="/register" className="button">Start writing</Link>
           </div>
         </section>
       )}
 
-      <div className="wrap columns">
+      <div className="with-aside">
         <section>
-          <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={view === 'global'} className={view === 'global' ? 'active' : ''} onClick={() => setParams({})}>
-              Latest
-            </button>
-            {user && (
-              <button role="tab" aria-selected={view === 'feed'} className={view === 'feed' ? 'active' : ''} onClick={() => setParams({ view: 'feed' })}>
-                Following
-              </button>
-            )}
-            {view === 'tag' && <button role="tab" aria-selected="true" className="active">#{tag}</button>}
-            {view === 'search' && <button role="tab" aria-selected="true" className="active">Results for “{q}”</button>}
+          <div className="row ruled">
+            <div className="note" />
+            <div className="tabs" role="tablist">
+              {tab('latest', 'Latest', () => setParams({}))}
+              {user && tab('feed', 'Following', () => setParams({ view: 'feed' }))}
+              {view === 'tag' && tab('tag', `#${tag}`)}
+              {view === 'search' && tab('search', `Results for “${q}”`)}
+            </div>
           </div>
-          <ArticleList
-            filters={filters}
-            emptyText={
-              view === 'feed' ? 'Follow some writers and their articles will appear here.'
-              : view === 'search' ? 'No articles match that search.'
-              : 'No articles here yet.'
-            }
-          />
+          <ArticleList filters={filters} emptyText={emptyText} />
         </section>
 
-        <aside className="sidebar">
+        <aside className="aside">
           {trending.length > 0 && (
-            <>
-              <h3>Trending</h3>
-              <ol className="trending">
+            <section>
+              <h2>Trending</h2>
+              <ol className="ranked">
                 {trending.map((article) => (
                   <li key={article.slug}>
-                    <Link to={`/article/${article.slug}`}>{article.title}</Link>
-                    <span className="muted">{article.author.username} · ♥ {article.favoritesCount}</span>
+                    <div>
+                      <Link to={`/article/${article.slug}`}>{article.title}</Link>
+                      <small>{article.author.username}, {article.favoritesCount} {article.favoritesCount === 1 ? 'favorite' : 'favorites'}</small>
+                    </div>
                   </li>
                 ))}
               </ol>
-            </>
+            </section>
           )}
-          <h3>Popular tags</h3>
-          {tags.length ? (
-            <ul className="tags">
-              {tags.map((name) => (
-                <li key={name}><Link to={`/?tag=${encodeURIComponent(name)}`}>#{name}</Link></li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">No tags yet.</p>
+          {tags.length > 0 && (
+            <section>
+              <h2>Tags</h2>
+              <ul className="tags">
+                {tags.map((name) => (
+                  <li key={name}><Link to={`/?tag=${encodeURIComponent(name)}`}>#{name}</Link></li>
+                ))}
+              </ul>
+            </section>
           )}
         </aside>
       </div>

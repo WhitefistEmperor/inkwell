@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
-import { FormErrors } from '../components/bits.jsx';
+import { Field, FormErrors } from '../components/bits.jsx';
 
 export default function AuthPage({ mode }) {
   const isRegister = mode === 'register';
@@ -31,37 +31,45 @@ export default function AuthPage({ mode }) {
   }
 
   return (
-    <div className="wrap narrow">
-      <h1 className="page-title">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
-      <p className="center">
-        {isRegister ? <Link to="/login">Already have an account?</Link> : <Link to="/register">Need an account?</Link>}
-      </p>
-      <form className="form" onSubmit={submit}>
-        <FormErrors error={error} />
-        {isRegister && (
-          <label>
-            Username
-            <input name="username" value={form.username} onChange={update} autoComplete="username" required />
-          </label>
-        )}
-        <label>
-          Email
-          <input name="email" type="email" value={form.email} onChange={update} autoComplete="email" required />
-        </label>
-        <label>
-          Password
-          <input
-            name="password"
-            type="password"
-            value={form.password}
-            onChange={update}
-            autoComplete={isRegister ? 'new-password' : 'current-password'}
-            minLength={isRegister ? 8 : undefined}
-            required
-          />
-        </label>
-        <button className="button" disabled={busy}>{isRegister ? 'Sign up' : 'Sign in'}</button>
-      </form>
-    </div>
+    <form onSubmit={submit}>
+      <div className="row page-title">
+        <div className="note" />
+        <div>
+          <h1>{isRegister ? 'Create your account' : 'Sign in'}</h1>
+          <p>
+            {isRegister
+              ? <>Already have one? <Link to="/login">Sign in</Link></>
+              : <>New here? <Link to="/register">Create an account</Link></>}
+          </p>
+        </div>
+      </div>
+
+      <FormErrors error={error} />
+      {isRegister && (
+        <Field label="Username" id="username" hint="Letters, numbers, dashes and underscores.">
+          <input id="username" name="username" value={form.username} onChange={update} autoComplete="username" required />
+        </Field>
+      )}
+      <Field label="Email" id="email">
+        <input id="email" name="email" type="email" value={form.email} onChange={update} autoComplete="email" required />
+      </Field>
+      <Field label="Password" id="password" hint={isRegister ? 'At least 8 characters.' : undefined}>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          value={form.password}
+          onChange={update}
+          autoComplete={isRegister ? 'new-password' : 'current-password'}
+          minLength={isRegister ? 8 : undefined}
+          required
+        />
+      </Field>
+
+      <div className="row form-end">
+        <div className="note" />
+        <div><button className="button" disabled={busy}>{isRegister ? 'Create account' : 'Sign in'}</button></div>
+      </div>
+    </form>
   );
 }

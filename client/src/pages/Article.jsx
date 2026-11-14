@@ -4,11 +4,13 @@ import Markdown from 'react-markdown';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { socket } from '../realtime.jsx';
-import { Avatar, Byline, FavoriteButton, FollowButton, FormErrors, TagList, formatDate } from '../components/bits.jsx';
+import { FavoriteButton, FollowButton, FormErrors, MarginNote, TagList, PageNote } from '../components/bits.jsx';
 
 // The person who posts a comment receives it twice: in the HTTP response and
-// as a WebSocket event. Whichever arrives second is ignored.
-const addOnce = (list, comment) => (list.some((c) => c.id === comment.id) ? list : [comment, ...list]);
+// as a WebSocket event. Whichever arrives second is ignored. A comment added
+// this way is marked `wet`, so it is drawn in wet ink and dries (see styles.css).
+const addOnce = (list, comment) =>
+  list.some((c) => c.id === comment.id) ? list : [{ ...comment, wet: true }, ...list];
 
 export default function Article() {
   const { slug } = useParams();
@@ -48,13 +50,13 @@ export default function Article() {
     };
   }, [slug]);
 
-  if (missing) return <p className="muted center">This article does not exist.</p>;
-  if (!article) return <p className="muted center">Loading…</p>;
+  if (missing) return <PageNote>This article does not exist. It may have been deleted.</PageNote>;
+  if (!article) return <PageNote>Loading…</PageNote>;
 
   const isAuthor = user?.username === article.author.username;
 
   async function remove() {
-    if (!window.confirm('Delete this article permanently?')) return;
+    if (!window.confirm('Delete this article? This cannot be undone.')) return;
     await api(`/articles/${slug}`, { method: 'DELETE' });
     navigate('/');
   }
@@ -66,58 +68,62 @@ export default function Article() {
 
   return (
     <>
-      <section className="article-head">
-        <div className="wrap medium">
+      <header className="row title-block ruled">
+        <MarginNote author={article.author} date={article.createdAt} />
+        <div className="measure">
           <h1>{article.title}</h1>
           <p className="lede">{article.description}</p>
-          <div className="article-meta">
-            <Byline author={article.author} date={article.createdAt} />
-            <div className="actions">
-              {isAuthor ? (
-                <>
-                  <Link to={`/editor/${slug}`} className="pill">Edit</Link>
-                  <button type="button" className="pill pill-danger" onClick={remove}>Delete</button>
-                </>
-              ) : (
-                <FollowButton
-                  profile={article.author}
-                  onChange={(profile) => setArticle({ ...article, author: profile })}
-                />
-              )}
-              <FavoriteButton article={article} onChange={setArticle} withLabel />
-            </div>
+          <div className="actions">
+            <FavoriteButton article={article} onChange={setArticle} withLabel />
+            {isAuthor ? (
+              <>
+                <Link to={`/editor/${slug}`}>Edit</Link>
+                <button type="button" className="text-button danger" onClick={remove}>Delete</button>
+              </>
+            ) : (
+              <FollowButton profile={article.author} onChange={(profile) => setArticle({ ...article, author: profile })} />
+            )}
           </div>
         </div>
-      </section>
+      </header>
 
-      <div className="wrap medium">
-        {/* react-markdown renders Markdown to React elements and ignores raw
-            HTML, so a body containing <script> cannot run (XSS protection). */}
-        <div className="prose"><Markdown>{article.body}</Markdown></div>
-        <TagList tags={article.tagList} />
-
-        <section className="comments">
-          <h2>Comments ({comments.length})</h2>
-          {user ? (
-            <CommentForm slug={slug} onAdded={(comment) => setComments((list) => addOnce(list, comment))} />
-          ) : (
-            <p className="muted"><Link to="/login">Sign in</Link> to join the conversation.</p>
-          )}
-          {comments.map((comment) => (
-            <div className="comment" key={comment.id}>
-              <p>{comment.body}</p>
-              <footer>
-                <Avatar user={comment.author} size={22} />
-                <Link to={`/profile/${comment.author.username}`}>{comment.author.username}</Link>
-                <time dateTime={comment.createdAt}>{formatDate(comment.createdAt)}</time>
-                {user?.username === comment.author.username && (
-                  <button type="button" className="link-button" onClick={() => removeComment(comment.id)}>Delete</button>
-                )}
-              </footer>
-            </div>
-          ))}
-        </section>
+      <div className="row ruled">
+        <div className="note" />
+        <div className="measure">
+          {/* react-markdown renders Markdown to React elements and ignores raw
+              HTML, so a body containing <script> cannot run (XSS protection). */}
+          <div className="prose"><Markdown>{article.body}</Markdown></div>
+          {article.tagList.length > 0 && <div style={{ paddingBottom: '1.5rem' }}><TagList tags={article.tagList} /></div>}
+        </div>
       </div>
+
+      <section aria-label="Comments">
+        <div className="row comments-head">
+          <div className="note" />
+          <h2>{comments.length === 1 ? '1 comment' : `${comments.length} comments`}</h2>
+        </div>
+
+        {user ? (
+          <CommentForm slug={slug} onAdded={(comment) => setComments((list) => addOnce(list, comment))} />
+        ) : (
+          <div className="row ruled">
+            <div className="note" />
+            <p className="empty"><Link to="/login">Sign in</Link> to write a comment.</p>
+          </div>
+        )}
+
+        {comments.map((comment) => (
+          <div className={`row comment ruled ${comment.wet ? 'is-wet' : ''}`} key={comment.id}>
+            <MarginNote author={comment.author} date={comment.createdAt} />
+            <div className="measure">
+              <p>{comment.body}</p>
+              {user?.username === comment.author.username && (
+                <button type="button" className="text-button danger pencil" onClick={() => removeComment(comment.id)}>Delete</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </section>
     </>
   );
 }
@@ -143,13 +149,15 @@ function CommentForm({ slug, onAdded }) {
   }
 
   return (
-    <form className="form comment-form" onSubmit={submit}>
+    <form onSubmit={submit} className="ruled" style={{ paddingBottom: '1.25rem' }}>
       <FormErrors error={error} />
-      <label>
-        <span className="sr-only">Your comment</span>
-        <textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a comment…" required />
-      </label>
-      <button className="button" disabled={busy}>Post comment</button>
+      <div className="row field wide">
+        <label htmlFor="comment">Your comment</label>
+        <div>
+          <textarea id="comment" className="ruled-paper" rows={3} value={body} onChange={(e) => setBody(e.target.value)} required />
+          <div className="form-end"><button className="button" disabled={busy}>Post comment</button></div>
+        </div>
+      </div>
     </form>
   );
 }
