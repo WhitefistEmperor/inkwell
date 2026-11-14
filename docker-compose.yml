@@ -1,0 +1,15 @@
+# Optional: a standalone PostgreSQL for people who prefer Docker.
+#   docker compose up -d
+#   then set DATABASE_URL=postgres://postgres:postgres@localhost:5432/inkwell in server/.env
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inkwell
+    ports:
+      - "5432:5432"
+    volumes:
+      - inkwell-data:/var/lib/postgresql/data
+volumes:
+  inkwell-data:

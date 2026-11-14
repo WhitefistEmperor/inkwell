@@ -1,0 +1,16 @@
+{
+  "name": "inkwell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Inkwell - a RealWorld-inspired full-stack publishing platform (React, Express, PostgreSQL)",
+  "scripts": {
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.5"
+  }
+}
