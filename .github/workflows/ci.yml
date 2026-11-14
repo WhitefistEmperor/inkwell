@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A real PostgreSQL for the integration tests, started next to the job.
     services:
       postgres:
@@ -27,6 +27,8 @@ jobs:
       - name: API tests
         run: npm ci && npm test
         working-directory: server
+      - name: Install libxml2 (needed by the Hurl test runner)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2
       - name: Official RealWorld API suite
         run: npm run test:spec
         working-directory: server
