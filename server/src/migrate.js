@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pool } from './db.js';
+import { pool, transaction } from './db.js';
 
 const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
@@ -11,13 +11,17 @@ const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '.
 const MIGRATION_LOCK = 727274;
 
 export async function runMigrations() {
-  // Everything runs on one connection that holds an advisory lock. If two
-  // copies of the server start at the same moment (which happens on
-  // serverless hosts), the second waits here until the first has finished,
+  // The whole run is ONE transaction that holds a transaction-scoped advisory
+  // lock. If two copies of the server start at the same moment (which happens
+  // on serverless hosts), the second waits at the lock until the first commits,
   // then finds nothing left to apply.
-  const client = await pool.connect();
-  try {
-    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK]);
+  //
+  // "Transaction-scoped" matters: a session-scoped lock can be lost or leaked
+  // when a connection pooler (such as the one in front of hosted Postgres)
+  // hands the same connection to someone else. This lock is released
+  // automatically at COMMIT or ROLLBACK, on any connection setup.
+  await transaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock($1)', [MIGRATION_LOCK]);
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name       TEXT PRIMARY KEY,
@@ -30,22 +34,11 @@ export async function runMigrations() {
     for (const file of files) {
       if (applied.has(file)) continue;
       const sql = await fs.readFile(path.join(migrationsDir, file), 'utf8');
-      // Migration + bookkeeping row in one transaction: either both happen or neither.
-      try {
-        await client.query('BEGIN');
-        await client.query(sql);
-        await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
-        await client.query('COMMIT');
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      }
+      await client.query(sql);
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
       console.log(`migrated: ${file}`);
     }
-  } finally {
-    await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK]).catch(() => {});
-    client.release();
-  }
+  });
 }
 
 // Allows `npm run migrate` to run this file directly.

@@ -14,8 +14,21 @@ import { app } from '../server/src/app.js';
 import { runMigrations } from '../server/src/migrate.js';
 import { ensureJwtSecret } from '../server/src/secret.js';
 
-// Bring the schema up to date, then load the signing secret.
-const prepare = () => runMigrations().then(ensureJwtSecret);
+// Bring the schema up to date, then load the signing secret. A sleeping
+// database can fail the first attempt while it wakes, so try a few times.
+async function prepare() {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await runMigrations();
+      await ensureJwtSecret();
+      return;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.error(`Startup attempt ${attempt} failed: ${err.message}`);
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    }
+  }
+}
 
 // Started once per cold start, shared by every request this copy serves.
 let ready = prepare();

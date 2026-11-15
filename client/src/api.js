@@ -25,7 +25,14 @@ export async function api(path, { method = 'GET', body } = {}) {
   const token = tokenStore.get();
   if (token) headers.Authorization = `Token ${token}`; // the scheme the RealWorld spec uses
 
-  const res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  // The first request to a serverless host can hit a cold start and be refused
+  // with 502/503/504 for a moment. Reads are safe to repeat, so retry them.
+  let res;
+  for (let attempt = 1; ; attempt++) {
+    res = await fetch(`/api${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    if (method !== 'GET' || attempt === 4 || ![502, 503, 504].includes(res.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+  }
   if (res.status === 204) return null; // success with no content (deletes)
 
   const data = await res.json().catch(() => ({}));
