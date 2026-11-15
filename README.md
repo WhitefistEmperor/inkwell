@@ -143,6 +143,10 @@ The repository is ready to import as it is: `vercel.json` builds the React app a
 2. Under **Storage**, create a **Neon** PostgreSQL database and connect it to the project. That adds `DATABASE_URL`.
 3. Deploy. The first request applies the database migrations and creates the JWT signing secret, which is stored in the database. To supply your own instead, set `JWT_SECRET` under **Settings, Environment Variables**.
 
-To add the demo articles to the hosted database, run the seed once from your machine with the hosted connection string in `DATABASE_URL`.
+To load the demo articles into the hosted site, run this once from your machine. It uses only the site's public API, so no database password is needed:
+
+```bash
+node server/scripts/seed-remote.js https://your-site.vercel.app
+```
 
 **What is different on Vercel.** A serverless function is frozen between requests, so it cannot hold a WebSocket open. The Vercel build therefore sets `VITE_REALTIME=off`: notifications are fetched every 30 seconds instead of pushed, and new comments appear on reload. Everything else, including search, trending and the official RealWorld suite's behaviour, is identical. For live updates, run `server/` on a host with long-lived processes (Render, Railway, Fly) and point the frontend at it.
