@@ -12,16 +12,20 @@
 //     client/src/realtime.jsx).
 import { app } from '../server/src/app.js';
 import { runMigrations } from '../server/src/migrate.js';
+import { ensureJwtSecret } from '../server/src/secret.js';
+
+// Bring the schema up to date, then load the signing secret.
+const prepare = () => runMigrations().then(ensureJwtSecret);
 
 // Started once per cold start, shared by every request this copy serves.
-let ready = runMigrations();
+let ready = prepare();
 
 export default async function handler(req, res) {
   try {
     await ready;
   } catch (err) {
-    console.error('Migration failed', err);
-    ready = runMigrations(); // let the next request try again
+    console.error('Startup failed', err);
+    ready = prepare(); // let the next request try again
     res.statusCode = 503;
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify({ errors: { server: ['is starting up, try again in a moment'] } }));

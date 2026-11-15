@@ -2,6 +2,8 @@
 
 ![CI](https://github.com/WhitefistEmperor/inkwell/actions/workflows/ci.yml/badge.svg)
 
+**Live demo: https://inkwell-xi-three.vercel.app**
+
 A full-stack publishing platform: write articles in Markdown, tag them, comment, favorite, and follow other writers to build a personal feed.
 
 Inkwell implements the [RealWorld](https://github.com/realworld-apps/realworld) API spec and **passes the official RealWorld API test suite (13 files, 157 requests)**, which runs in CI on every push. On top of the spec it adds ranked full-text search, real-time notifications and comments over WebSockets, and a trending feed.
@@ -137,10 +139,9 @@ The interface is drawn as a ruled notebook page. A red margin line runs down the
 
 The repository is ready to import as it is: `vercel.json` builds the React app as static files and runs the Express API as one serverless function (`api/index.js`).
 
-1. On vercel.com choose **Add New, Project** and import this repository. Leave the build settings alone.
+1. On vercel.com choose **Add New, Project** and import this repository. Set **Application Preset** to **Other** so the repository's own `vercel.json` is used.
 2. Under **Storage**, create a **Neon** PostgreSQL database and connect it to the project. That adds `DATABASE_URL`.
-3. Under **Settings, Environment Variables**, add `JWT_SECRET` with a long random value.
-4. Deploy. The first request applies the database migrations.
+3. Deploy. The first request applies the database migrations and creates the JWT signing secret, which is stored in the database. To supply your own instead, set `JWT_SECRET` under **Settings, Environment Variables**.
 
 To add the demo articles to the hosted database, run the seed once from your machine with the hosted connection string in `DATABASE_URL`.
 
