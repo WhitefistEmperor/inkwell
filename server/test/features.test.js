@@ -8,6 +8,8 @@ import { runMigrations } from '../src/migrate.js';
 import { attachRealtime } from '../src/realtime.js';
 import { api, auth, comment, publish, register } from './helpers.js';
 import { app } from '../src/app.js';
+import { SEARCH_CAP } from '../src/articles.service.js';
+import { config } from '../src/config.js';
 
 let asha;
 let ravi;
@@ -214,5 +216,57 @@ describe('realtime (WebSocket)', () => {
     await comment(asha, slug, 'quiet');
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(heard, false);
+  });
+});
+
+describe('caching and search limits', () => {
+  test('the tag list is cached, yet a new article shows its tags at once', async () => {
+    const saved = config.cacheMs;
+    config.cacheMs = 60_000;
+    try {
+      await api.get('/api/tags'); // fills the cache
+      await publish(asha, { title: 'Fresh tags', body: 'tagged', tagList: ['freshtag'] });
+      assert.ok((await api.get('/api/tags')).body.tags.includes('freshtag'));
+    } finally {
+      config.cacheMs = saved;
+    }
+  });
+
+  test('trending reuses its cached ranking until the cache expires', async () => {
+    const saved = config.cacheMs;
+    config.cacheMs = 60_000;
+    try {
+      config.cacheMs = 0;
+      await api.get('/api/articles/trending'); // refreshes the ranking now
+      config.cacheMs = 60_000;
+      const before = (await api.get('/api/articles/trending')).body.articles.map((a) => a.slug);
+      const hot = await publish(ravi, { title: 'Instant hit', body: 'hot' });
+      await api.post(`/api/articles/${hot}/favorite`).set(auth(asha));
+      const cached = (await api.get('/api/articles/trending')).body.articles.map((a) => a.slug);
+      assert.deepEqual(cached, before);
+      assert.ok(!cached.includes(hot));
+      config.cacheMs = 0;
+      const fresh = (await api.get('/api/articles/trending')).body.articles.map((a) => a.slug);
+      assert.ok(fresh.includes(hot));
+    } finally {
+      config.cacheMs = saved;
+    }
+  });
+
+  test('a search counts and ranks at most SEARCH_CAP of the newest matches', async () => {
+    const values = Array.from({ length: SEARCH_CAP + 5 }, (_, i) => i);
+    const { rows: [user] } = await pool.query("SELECT id FROM users WHERE username = 'asha'");
+    await pool.query(
+      `INSERT INTO articles (slug, title, description, body, author_id, created_at)
+       SELECT 'capword-' || i, 'capword ' || i, 'd', 'capword body', $1, now() - i * interval '1 minute'
+       FROM unnest($2::int[]) i`, [user.id, values]);
+    try {
+      const res = await api.get('/api/articles').query({ q: 'capword', limit: 20 });
+      assert.equal(res.body.articlesCount, SEARCH_CAP);
+      const last = await api.get('/api/articles').query({ q: 'capword', limit: 20, offset: SEARCH_CAP });
+      assert.equal(last.body.articles.length, 0); // the 5 oldest matches are past the cap
+    } finally {
+      await pool.query("DELETE FROM articles WHERE slug LIKE 'capword-%'");
+    }
   });
 });

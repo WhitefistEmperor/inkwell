@@ -21,5 +21,8 @@ export const config = {
   // fail loudly, so a guessable key can never be used by accident.
   jwtSecret: process.env.JWT_SECRET || (isProduction ? null : 'dev-only-secret-change-me'),
   jwtExpiresIn: '7d',
+  // How long the trending ranking and the tag list are cached, in ms. Off in
+  // tests, which change the data directly and expect to see it at once.
+  cacheMs: process.env.CACHE_MS !== undefined ? Number(process.env.CACHE_MS) : (process.env.NODE_ENV === 'test' ? 0 : 30_000),
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 };

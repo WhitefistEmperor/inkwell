@@ -1,5 +1,6 @@
 // All SQL for articles, comments and tags lives here; the route file only handles HTTP.
 import crypto from 'node:crypto';
+import { config } from './config.js';
 import { query, transaction } from './db.js';
 import { forbiddenError, notFoundError } from './middleware.js';
 import { notify } from './notifications.service.js';
@@ -78,16 +79,35 @@ function buildFilters(params, { tag, author, favoritedBy, feedFor, q }) {
   return where.length ? `WHERE ${where.join(' AND ')}` : '';
 }
 
+// Searches rank and count at most this many matches (the newest ones).
+export const SEARCH_CAP = 2000;
+
 export async function listArticles({ viewerId = null, limit, offset, ...filters }) {
   const params = [viewerId];
   const where = buildFilters(params, filters);
+  // users is only needed in the filter when filtering by author name.
+  const join = filters.author ? 'JOIN users u ON u.id = a.author_id' : '';
 
   // Searching changes two things: results are ordered by relevance instead of
   // date, and each result carries a snippet with the matched words marked.
   // The marks are [[ and ]] rather than HTML tags, so the frontend can
   // highlight them without ever rendering user-written HTML.
+  //
+  // Every list is two steps in one statement. First pick the ids on the
+  // requested page, reading only the columns needed to filter and sort. Then
+  // build the full article (author, tags, favorite count, viewer flags,
+  // snippet) for just those rows. Without the split, page 250 computed all of
+  // that for the 5,000 rows it skipped.
   let select = ARTICLE_SELECT;
-  let orderBy = 'a.created_at DESC, a.id DESC';
+  params.push(limit, offset);
+  const [lim, off] = [`$${params.length - 1}`, `$${params.length}`];
+  let pageSql = `
+    WITH p AS (
+      SELECT a.id, a.created_at FROM articles a ${join} ${where}
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT ${lim} OFFSET ${off})
+    ${select} JOIN p ON p.id = a.id
+    ORDER BY p.created_at DESC, p.id DESC`;
   if (filters.q) {
     const tsQuery = `websearch_to_tsquery('english', $${params.indexOf(filters.q) + 1})`;
     select = ARTICLE_SELECT.replace(
@@ -95,24 +115,36 @@ export async function listArticles({ viewerId = null, limit, offset, ...filters 
       `, ts_headline('english', a.body, ${tsQuery}, 'StartSel=[[, StopSel=]], MaxWords=30, MinWords=12') AS snippet
        FROM articles a`,
     );
-    orderBy = `ts_rank(a.search, ${tsQuery}) DESC, a.id DESC`;
+    // ts_rank has to read each match's tsvector, which for long bodies is
+    // stored compressed out of line. A word that appears in a third of 100,000
+    // articles meant decompressing ~35,000 vectors per search (about 2 s under
+    // load). So relevance is computed over the SEARCH_CAP newest matches only,
+    // which finding by the created_at index stops early, and the count is
+    // capped to match: a search never pages past its first SEARCH_CAP results.
+    pageSql = `
+      WITH m AS (
+        SELECT a.id FROM articles a ${join} ${where}
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT ${SEARCH_CAP}),
+      p AS (
+        SELECT a.id, ts_rank(a.search, ${tsQuery}) AS rank
+        FROM m JOIN articles a ON a.id = m.id
+        ORDER BY rank DESC, a.id DESC
+        LIMIT ${lim} OFFSET ${off})
+      ${select} JOIN p ON p.id = a.id
+      ORDER BY p.rank DESC, p.id DESC`;
   }
 
-  params.push(limit, offset);
-  const page = await query(
-    `${select} ${where}
-     ORDER BY ${orderBy}
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params,
-  );
-
-  // Total matching rows, so the client can draw page numbers.
+  // Total matching rows, so the client can draw page numbers. It does not
+  // depend on the page, so it runs at the same time on a second connection.
   const countParams = [];
   const countWhere = buildFilters(countParams, filters);
-  const total = await query(
-    `SELECT count(*)::int AS total FROM articles a JOIN users u ON u.id = a.author_id ${countWhere}`,
-    countParams,
-  );
+  const [page, total] = await Promise.all([
+    query(pageSql, params),
+    query(filters.q
+      ? `SELECT count(*)::int AS total FROM (SELECT 1 FROM articles a ${join} ${countWhere} LIMIT ${SEARCH_CAP}) c`
+      : `SELECT count(*)::int AS total FROM articles a ${join} ${countWhere}`, countParams),
+  ]);
 
   return {
     articles: page.rows.map((row) => toArticle(row, { withBody: false })),
@@ -124,16 +156,38 @@ export async function listArticles({ viewerId = null, limit, offset, ...filters 
 // famous:  score = (favorites + 2*comments + 1) / (age_in_hours + 2)^1.5
 // A comment counts double because it takes more effort than a click. The
 // exponent is "gravity": it decides how fast old articles sink.
+//
+// Favorites and comments are counted once per article with GROUP BY over the
+// last 30 days, instead of two correlated counts per candidate article.
+// The ranking is the same for every reader and moves slowly, so the ranked
+// ids are cached for config.cacheMs (30 s by default); each request still
+// reads the articles fresh, with that reader's favorited/following flags.
+const trendingCache = { at: 0, limit: 0, ids: [] };
+
 export async function trendingArticles(viewerId = null, limit = 5) {
+  if (!(Date.now() - trendingCache.at < config.cacheMs && trendingCache.limit === limit)) {
+    const { rows } = await query(
+      `WITH recent AS (
+         SELECT id, created_at FROM articles WHERE created_at > now() - interval '30 days'),
+       fav AS (
+         SELECT article_id, count(*) AS n FROM favorites
+         WHERE article_id IN (SELECT id FROM recent) GROUP BY article_id),
+       com AS (
+         SELECT article_id, count(*) AS n FROM comments
+         WHERE article_id IN (SELECT id FROM recent) GROUP BY article_id)
+       SELECT r.id FROM recent r
+       LEFT JOIN fav ON fav.article_id = r.id
+       LEFT JOIN com ON com.article_id = r.id
+       ORDER BY (COALESCE(fav.n, 0) + 2 * COALESCE(com.n, 0) + 1)
+                / power(extract(epoch FROM now() - r.created_at) / 3600 + 2, 1.5) DESC, r.id DESC
+       LIMIT $1`,
+      [limit],
+    );
+    Object.assign(trendingCache, { at: Date.now(), limit, ids: rows.map((r) => r.id) });
+  }
   const { rows } = await query(
-    `${ARTICLE_SELECT}
-     WHERE a.created_at > now() - interval '30 days'
-     ORDER BY ((SELECT count(*) FROM favorites f WHERE f.article_id = a.id)
-               + 2 * (SELECT count(*) FROM comments c WHERE c.article_id = a.id) + 1)
-              / power(extract(epoch FROM now() - a.created_at) / 3600 + 2, 1.5) DESC,
-              a.id DESC
-     LIMIT $2`,
-    [viewerId, limit],
+    `${ARTICLE_SELECT} WHERE a.id = ANY($2::int[]) ORDER BY array_position($2::int[], a.id)`,
+    [viewerId, trendingCache.ids],
   );
   return rows.map((row) => toArticle(row, { withBody: false }));
 }
@@ -165,6 +219,7 @@ async function setTags(client, articleId, tags) {
 }
 
 export async function createArticle(userId, { title, description, body, tagList }) {
+  clearTagCache();
   const slug = makeSlug(title);
   // Article + tags are written in one transaction: if tagging fails, the
   // article insert is rolled back too, so we never store half an article.
@@ -179,6 +234,7 @@ export async function createArticle(userId, { title, description, body, tagList 
 }
 
 export async function updateArticle(userId, slug, { title, description, body, tagList }) {
+  clearTagCache();
   const row = await findOwnedRow(slug, userId);
   await transaction(async (client) => {
     await client.query(
@@ -198,6 +254,7 @@ export async function updateArticle(userId, slug, { title, description, body, ta
 }
 
 export async function deleteArticle(userId, slug) {
+  clearTagCache();
   const row = await findOwnedRow(slug, userId);
   // ON DELETE CASCADE removes its comments, favorites and tag links.
   await query('DELETE FROM articles WHERE id = $1', [row.id]);
@@ -265,11 +322,21 @@ export async function deleteComment(userId, slug, commentId) {
 
 // ---- tags ----
 
-// Every tag that is in use, most used first.
+// Every tag that is in use, most used first. Cached like trending; a write
+// in this process clears it at once, so authors see their new tag
+// immediately (other server instances catch up within config.cacheMs).
+const tagCache = { at: 0, tags: [] };
+const clearTagCache = () => { tagCache.at = 0; };
+
 export async function listTags() {
+  if (Date.now() - tagCache.at < config.cacheMs) return tagCache.tags;
   const { rows } = await query(
-    `SELECT t.name FROM tags t JOIN article_tags at ON at.tag_id = t.id
-     GROUP BY t.name ORDER BY count(*) DESC, t.name`,
+    // Count by tag id first (an index-only scan of article_tags_tag_idx), then
+    // look up the ~100 names, instead of joining every link row to its name.
+    `SELECT t.name FROM (SELECT tag_id, count(*) AS n FROM article_tags GROUP BY tag_id) c
+     JOIN tags t ON t.id = c.tag_id
+     ORDER BY c.n DESC, t.name`,
   );
-  return rows.map((r) => r.name);
+  Object.assign(tagCache, { at: Date.now(), tags: rows.map((r) => r.name) });
+  return tagCache.tags;
 }

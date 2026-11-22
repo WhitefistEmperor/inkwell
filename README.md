@@ -27,8 +27,65 @@ Inkwell implements the [RealWorld](https://github.com/realworld-apps/realworld) 
 
 **Testing**
 - The official RealWorld suite: `npm run test:spec`
-- 31 integration tests of our own against a real PostgreSQL: security (hashing, tampered tokens, SQL injection, private WebSocket delivery), data integrity (cascades, transaction rollback, idempotency), search, trending and notifications
+- 34 integration tests of our own against a real PostgreSQL: security (hashing, tampered tokens, SQL injection, private WebSocket delivery), data integrity (cascades, transaction rollback, idempotency), search, trending, notifications, caching and the search cap
+- A load benchmark at 100,000 articles (`npm --prefix server run bench`), described below
 - GitHub Actions runs both, plus a frontend build
+
+## Performance at 100,000 articles
+
+`npm --prefix server run bench` seeds a throwaway PostgreSQL with **10,000 users, 100,000
+articles (~150-word bodies), 296,000 tag links, 500,000 favorites, 300,000 comments and 299,000
+follows**, starts the real server, and loads each read endpoint with
+[autocannon](https://github.com/mcollina/autocannon) (20 connections, 10 s each). It also
+measures WebSocket fan-out: 200 readers on one article, time from posting a comment over HTTP
+until each reader receives it.
+
+The first run exposed four slow paths. The fixes, all in `server/src/articles.service.js`:
+
+1. **Paginate ids first, then build articles.** Every list built the full article (author,
+   tags, favorite count, viewer flags) for each row *before* `OFFSET` threw it away, so page
+   251 did that work 5,020 times. Now it picks the 20 ids first and builds only those.
+   The count query also runs in parallel instead of after the page.
+2. **Bounded search.** `ts_rank` has to read each match's `tsvector`, which for long bodies
+   PostgreSQL stores compressed outside the row. A word in 35% of articles meant decompressing
+   ~35,000 vectors per search. Search now ranks the 2,000 newest matches and caps
+   `articlesCount` at 2,000 to match.
+3. **Trending** counts favorites and comments with one `GROUP BY` instead of two correlated
+   counts per article, and caches the ranked ids for 30 s. The articles themselves, with the
+   reader's own flags, are always read fresh.
+4. **Tags** are counted by id from the index and cached for 30 s. Writing an article clears
+   the cache at once.
+
+Same machine (Ryzen 7 5700U, 16 threads, Windows, Node 24) and the same seeded data for both
+runs. Requests per second and latency in ms; no request failed in either run.
+
+| Endpoint | req/s before | req/s after | p50 before | p50 after | p99 before | p99 after |
+|---|---:|---:|---:|---:|---:|---:|
+| `GET /articles` (page 1) | 257 | 629 | 77 | 30 | 95 | 41 |
+| `GET /articles` (page 251) | 38 | 619 | 484 | 32 | 909 | 37 |
+| `GET /articles?q=` (word in 35% of articles) | 10 | 127 | 1,938 | 139 | 2,276 | 974 |
+| `GET /articles?q=` (two rarer words) | 97 | 191 | 174 | 103 | 1,405 | 172 |
+| `GET /articles/trending` | 29 | 1,237 | 665 | 14 | 806 | 20 |
+| `GET /tags` | 46 | 5,862 | 411 | 3 | 887 | 7 |
+| `GET /articles?tag=` | 324 | 426 | 59 | 45 | 76 | 57 |
+| `GET /articles/feed` (signed in) | 529 | 608 | 37 | 32 | 47 | 42 |
+| `GET /articles/:slug` | 913 | 1,076 | 21 | 17 | 33 | 24 |
+| `GET /articles/:slug/comments` (unchanged code) | 894 | 693 | 22 | 28 | 29 | 36 |
+
+WebSocket fan-out to 200 readers (4,000 deliveries): p50 24 ms, p95 61 ms, p99 72 ms.
+
+How to read this:
+- The comments endpoint's code did not change, yet it moved by about 20% between runs. That
+  is this machine's run-to-run noise, so treat differences under about 25% as noise.
+  The large gains (page 251 ×16, trending ×43, tags ×127, common-word search ×13) are far
+  outside it.
+- The tags and trending numbers are mostly the cache. A cache miss costs one query of about
+  90 ms (tags) or 240 ms (trending).
+- The search cap changes behaviour. A search ranks only its 2,000 newest matches and never
+  pages past them. Ranking every match exactly needs an index that can order by rank (the RUM
+  extension) or a separate search engine. Hosted PostgreSQL usually offers neither.
+- The seeded text is generated, so word frequencies are only roughly realistic.
+- Raw results: `server/bench/results-before.json`, `server/bench/results-after.json`.
 
 ## Run it locally
 
@@ -122,7 +179,7 @@ All routes are under `/api`. Send `Authorization: Token <jwt>` for routes marked
 
 | Method | Route | What it does |
 |---|---|---|
-| GET | `/articles?q=` | Full-text search, ranked by relevance, with a `snippet` per result |
+| GET | `/articles?q=` | Full-text search, ranked by relevance among the 2,000 newest matches (`articlesCount` is capped at 2,000), with a `snippet` per result |
 | GET | `/articles/trending` | Top 5 by time-decayed engagement |
 | GET | `/notifications` 🔒 | Latest notifications and unread count |
 | POST | `/notifications/read` 🔒 | Mark all as read |
