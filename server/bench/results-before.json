@@ -1,0 +1,191 @@
+{
+  "label": "before",
+  "date": "2026-11-22T16:51:56.320Z",
+  "machine": {
+    "cpus": 16,
+    "cpu": "AMD Ryzen 7 5700U with Radeon Graphics         ",
+    "node": "v24.19.0",
+    "platform": "win32"
+  },
+  "load": {
+    "connections": 20,
+    "seconds_per_endpoint": 10
+  },
+  "data": {
+    "users": 10000,
+    "articles": 100000,
+    "article_tags": 296181,
+    "favorites": 499539,
+    "comments": 300020,
+    "follows": 298639
+  },
+  "seed_seconds": 0,
+  "endpoints": {
+    "GET /articles (global, page 1)": {
+      "requests_per_s": 257,
+      "latency_ms": {
+        "p50": 77,
+        "p90": 86,
+        "p99": 95,
+        "max": 331
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles (signed in)": {
+      "requests_per_s": 248,
+      "latency_ms": {
+        "p50": 81,
+        "p90": 88,
+        "p99": 94,
+        "max": 132
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?offset=5000 (deep page)": {
+      "requests_per_s": 38,
+      "latency_ms": {
+        "p50": 484,
+        "p90": 610,
+        "p99": 909,
+        "max": 919
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?tag=": {
+      "requests_per_s": 324,
+      "latency_ms": {
+        "p50": 59,
+        "p90": 64,
+        "p99": 76,
+        "max": 374
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?author=": {
+      "requests_per_s": 891,
+      "latency_ms": {
+        "p50": 22,
+        "p90": 25,
+        "p99": 30,
+        "max": 48
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?favorited=": {
+      "requests_per_s": 634,
+      "latency_ms": {
+        "p50": 30,
+        "p90": 36,
+        "p99": 61,
+        "max": 82
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles/feed": {
+      "requests_per_s": 529,
+      "latency_ms": {
+        "p50": 37,
+        "p90": 42,
+        "p99": 47,
+        "max": 60
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?q= (common word)": {
+      "requests_per_s": 10,
+      "latency_ms": {
+        "p50": 1938,
+        "p90": 2209,
+        "p99": 2276,
+        "max": 2276
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles?q= (rare words)": {
+      "requests_per_s": 97,
+      "latency_ms": {
+        "p50": 174,
+        "p90": 198,
+        "p99": 1405,
+        "max": 1440
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles/trending": {
+      "requests_per_s": 29,
+      "latency_ms": {
+        "p50": 665,
+        "p90": 706,
+        "p99": 806,
+        "max": 836
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /tags": {
+      "requests_per_s": 46,
+      "latency_ms": {
+        "p50": 411,
+        "p90": 484,
+        "p99": 887,
+        "max": 937
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles/:slug": {
+      "requests_per_s": 913,
+      "latency_ms": {
+        "p50": 21,
+        "p90": 26,
+        "p99": 33,
+        "max": 261
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    },
+    "GET /articles/:slug/comments": {
+      "requests_per_s": 894,
+      "latency_ms": {
+        "p50": 22,
+        "p90": 25,
+        "p99": 29,
+        "max": 39
+      },
+      "non_2xx": 0,
+      "errors": 0,
+      "timeouts": 0
+    }
+  },
+  "realtime": {
+    "readers": 200,
+    "comments": 20,
+    "deliveries": 4000,
+    "latency_ms": {
+      "p50": 22.1,
+      "p95": 75.7,
+      "p99": 89.6
+    }
+  }
+}
